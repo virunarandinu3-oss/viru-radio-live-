@@ -35,7 +35,7 @@ RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor
     apt-get install -y --no-install-recommends cloudflare-warp && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Fix X11 and DBus socket directory permissions
+# Fix X11 and DBus permissions
 RUN mkdir -p /tmp/.X11-unix /var/run/dbus /var/lib/cloudflare-warp && \
     chmod 1777 /tmp/.X11-unix
 
@@ -46,12 +46,15 @@ RUN useradd -m -s /bin/bash streamer && \
 WORKDIR /home/streamer
 
 COPY start.sh /home/streamer/start.sh
-RUN chmod +x /home/streamer/start.sh && chown -R streamer:streamer /home/streamer
 
-# Run as root so start.sh can initialize WARP service, then drop to streamer
+# Remove Windows CRLF (\r) line endings and grant execution permissions
+RUN sed -i 's/\r$//' /home/streamer/start.sh && \
+    chmod +x /home/streamer/start.sh && \
+    chown -R streamer:streamer /home/streamer
+
 USER root
 
 ENV TARGET_URL="https://original-site-orpin.vercel.app/"
 ENV YOUTUBE_STREAM_KEY=""
 
-CMD ["/home/streamer/start.sh"]+
+CMD ["bash", "/home/streamer/start.sh"]
