@@ -2,7 +2,7 @@ FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1. Install base utilities, Chromium, Xvfb, Openbox (window manager for focus), PulseAudio, FFmpeg
+# Install dependencies: Chromium, Xvfb, Openbox (for window focus & audio clicks), PulseAudio, FFmpeg
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     xvfb \
@@ -16,27 +16,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     ca-certificates \
     curl \
-    gnupg \
-    dbus \
-    dbus-x11 \
     procps \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Install Official Cloudflare WARP Client
-RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg && \
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ bookworm main" | tee /etc/apt/sources.list.d/cloudflare-client.list && \
-    apt-get update && apt-get install -y --no-install-recommends cloudflare-warp && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Create streamer user
+# Dedicated streamer user (runs PulseAudio, Chromium, and FFmpeg seamlessly under one user)
 RUN useradd -m -s /bin/bash streamer && \
     usermod -aG audio,video streamer
 
-WORKDIR /app
+WORKDIR /home/streamer
 
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh && chown -R streamer:streamer /home/streamer /app
+COPY start.sh /home/streamer/start.sh
+RUN chmod +x /home/streamer/start.sh && chown -R streamer:streamer /home/streamer
+
+USER streamer
 
 ENV TARGET_URL="https://original-site-orpin.vercel.app/"
 ENV OUTPUT_RESOLUTION="426x240"
@@ -45,4 +38,4 @@ ENV FPS="15"
 ENV VIDEO_BITRATE="200k"
 ENV AUDIO_BITRATE="128k"
 
-CMD ["/app/start.sh"]
+CMD ["/home/streamer/start.sh"]
