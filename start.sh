@@ -1,6 +1,46 @@
 #!/usr/bin/env bash
 set -e
 
+# ==============================================================
+# PHASE 1: ROOT INITIALIZATION (Start Cloudflare WARP)
+# ==============================================================
+if [ "$(id -u)" = "0" ]; then
+  echo "=================================================="
+  echo "    STARTING CLOUDFLARE 1.1.1.1 WARP (ROOT)       "
+  echo "=================================================="
+
+  mkdir -p /var/run/dbus /var/lib/cloudflare-warp
+  dbus-daemon --system --fork 2>/dev/null || true
+  warp-svc >/dev/null 2>&1 &
+  sleep 4
+
+  warp-cli --accept-tos registration new 2>/dev/null || warp-cli --accept-tos register 2>/dev/null || true
+  warp-cli --accept-tos mode proxy 2>/dev/null || warp-cli --accept-tos set-mode proxy 2>/dev/null || true
+  warp-cli --accept-tos proxy port 40000 2>/dev/null || warp-cli --accept-tos set-proxy-port 40000 2>/dev/null || true
+  warp-cli --accept-tos connect 2>/dev/null || true
+
+  PROXY_FLAG=""
+  for i in {1..8}; do
+    echo "[*] Checking Cloudflare WARP status (attempt $i/8)..."
+    if curl --socks5 127.0.0.1:40000 -s --max-time 2 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | grep -q "warp=on"; then
+      echo "[✓] SUCCESS: Cloudflare 1.1.1.1 WARP is ACTIVE! Datacenter IP is now masked."
+      PROXY_FLAG="--proxy-server=socks5://127.0.0.1:40000"
+      break
+    elif curl --socks5 127.0.0.1:1080 -s --max-time 2 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | grep -q "warp=on"; then
+      echo "[✓] SUCCESS: Cloudflare 1.1.1.1 WARP is ACTIVE on 1080! Datacenter IP is now masked."
+      PROXY_FLAG="--proxy-server=socks5://127.0.0.1:1080"
+      break
+    fi
+    sleep 1
+  done
+
+  echo "[+] Switching to streamer user to launch audio and Chrome..."
+  exec su -p streamer -c "PROXY_FLAG='$PROXY_FLAG' TARGET_URL='$TARGET_URL' YOUTUBE_STREAM_KEY='$YOUTUBE_STREAM_KEY' /home/streamer/start.sh"
+fi
+
+# ==============================================================
+# PHASE 2: STREAMER INITIALIZATION (Audio, Chrome, and FFmpeg)
+# ==============================================================
 echo "=================================================="
 echo "    STREAM VIRU RADIO TO YOUTUBE (16-DAY PLAN)    "
 echo "=================================================="
@@ -23,6 +63,7 @@ fi
 echo "[+] Target URL     : $FULL_URL"
 echo "[+] Video Quality  : 240p (426x240 @ 15fps, 200 kbps)"
 echo "[+] Audio Quality  : 128 kbps AAC (Crystal Clear)"
+echo "[+] Proxy Setting  : ${PROXY_FLAG:-Direct}"
 echo "[+] Duration Target: 16 Days within Railway \$5 Budget"
 
 # Graceful cleanup
@@ -55,7 +96,7 @@ pactl set-source-volume VirtualSink.monitor 65536 || true
 mkdir -p ~/.config/google-chrome
 touch ~/.config/google-chrome/'First Run'
 
-# 4. Launch Clean Official Google Chrome (No Automation Banners, Pure Consumer Mode)
+# 4. Launch Clean Official Google Chrome (with Cloudflare WARP Proxy)
 echo "[+] Launching Official Google Chrome..."
 google-chrome \
   --no-sandbox \
@@ -71,6 +112,7 @@ google-chrome \
   --window-position=0,0 \
   --start-fullscreen \
   --log-level=3 \
+  $PROXY_FLAG \
   --kiosk "$FULL_URL" &
 
 # 5. Wait for page load and trigger broadcast clicks & keys to unmute
@@ -86,7 +128,6 @@ google-chrome \
 ) &
 
 # 6. Stream Engine: Downscale 1280x720 to 240p (200k Video + 128k Audio = 16 Days)
-# FFmpeg 4.x compatible (-vsync 1 instead of unrecognized -fps_mode)
 echo "[+] Launching FFmpeg Stream to YouTube Live..."
 while true; do
   ffmpeg -hide_banner -loglevel warning \
