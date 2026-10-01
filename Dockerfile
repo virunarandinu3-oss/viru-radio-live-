@@ -1,8 +1,8 @@
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies: Chromium, Xvfb, PulseAudio, FFmpeg, xdotool, fonts
+# Update package lists and install required tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     xvfb \
@@ -10,9 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio-utils \
     ffmpeg \
     xdotool \
-    fonts-noto \
-    fonts-noto-cjk \
-    fonts-noto-color-emoji \
+    fonts-dejavu-core \
+    fonts-liberation \
     ca-certificates \
     curl \
     dbus \
@@ -21,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Dedicated streamer user
+# Dedicated non-root streamer user for Chromium and PulseAudio stability
 RUN useradd -m -s /bin/bash streamer && \
     usermod -aG audio,video streamer
 
@@ -38,6 +37,5 @@ ENV RESOLUTION="426x240"
 ENV FPS="15"
 ENV VIDEO_BITRATE="200k"
 ENV AUDIO_BITRATE="128k"
-ENV YOUTUBE_STREAM_KEY=""
 
 CMD ["/home/streamer/start.sh"]
