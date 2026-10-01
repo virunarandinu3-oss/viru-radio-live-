@@ -2,7 +2,7 @@
 set -e
 
 echo "=================================================="
-echo "    VIRU RADIO 24/7 STREAMER (FAST DIRECT FIX)    "
+echo "    STREAM VIRU RADIO TO YOUTUBE (16-DAY PLAN)    "
 echo "=================================================="
 
 if [ -z "$YOUTUBE_STREAM_KEY" ]; then
@@ -12,12 +12,19 @@ if [ -z "$YOUTUBE_STREAM_KEY" ]; then
   exit 1
 fi
 
-CANVAS_WIDTH=$(echo "$CANVAS_RESOLUTION" | cut -d'x' -f1)
-CANVAS_HEIGHT=$(echo "$CANVAS_RESOLUTION" | cut -d'x' -f2)
-OUT_WIDTH=$(echo "$OUTPUT_RESOLUTION" | cut -d'x' -f1)
-OUT_HEIGHT=$(echo "$OUTPUT_RESOLUTION" | cut -d'x' -f2)
+TARGET_URL="${TARGET_URL:-https://original-site-orpin.vercel.app/}"
 
-export DISPLAY=:99
+# Append autoplay=1 parameter safely
+if [[ "$TARGET_URL" == *"?"* ]]; then
+  FULL_URL="${TARGET_URL}&autoplay=1"
+else
+  FULL_URL="${TARGET_URL}?autoplay=1"
+fi
+
+echo "[+] Target URL     : $FULL_URL"
+echo "[+] Video Quality  : 240p (426x240 @ 15fps, 200 kbps)"
+echo "[+] Audio Quality  : 128 kbps AAC (Crystal Clear)"
+echo "[+] Duration Target: 16 Days within Railway \$5 Budget"
 
 # Graceful cleanup
 cleanup() {
@@ -27,98 +34,70 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-# ==============================================================
-# 1. Virtual Display (Xvfb) & Openbox Window Manager
-# ==============================================================
-echo "[+] Starting Xvfb Display on :99 (${CANVAS_WIDTH}x${CANVAS_HEIGHT})..."
-Xvfb :99 -screen 0 "${CANVAS_WIDTH}x${CANVAS_HEIGHT}x24" -ac +extension GLX +render -noreset &
+# 1. Start Virtual Display in 720p (Normal TV Proportions)
+echo "[+] Starting Xvfb Display on :99..."
+Xvfb :99 -screen 0 1280x720x24 &
+export DISPLAY=:99
 sleep 2
 
-echo "[+] Starting Openbox Window Manager..."
-openbox &
-sleep 1
-
-# ==============================================================
-# 2. Virtual Audio System (PulseAudio)
-# ==============================================================
-echo "[+] Initializing PulseAudio and VirtualSink..."
-pulseaudio -D --exit-idle-time=-1 || true
-sleep 1
-
-pactl load-module module-null-sink sink_name=VirtualSink sink_properties=device.description=VirtualSink || true
-pactl set-default-sink VirtualSink || true
+# 2. Setup PulseAudio Virtual Sink
+echo "[+] Initializing PulseAudio Virtual Sink..."
+pulseaudio --start --exit-idle-time=-1
+sleep 2
+pactl load-module module-null-sink sink_name=VirtualSink sink_properties=device.description=VirtualSink
+pactl set-default-sink VirtualSink
+export PULSE_SINK=VirtualSink
 pactl set-sink-mute VirtualSink 0 || true
 pactl set-sink-volume VirtualSink 65536 || true
 pactl set-source-mute VirtualSink.monitor 0 || true
 pactl set-source-volume VirtualSink.monitor 65536 || true
-echo "[✓] PulseAudio Audio System is ready with 100% Volume!"
 
-# ==============================================================
-# 3. Launch Chromium Browser (Direct Connection & Stealth Anti-Bot)
-# ==============================================================
-echo "[+] Starting Chromium (Direct connection without broken proxy)..."
-mkdir -p /home/streamer/chrome-profile
+# 3. Suppress Chrome Prompts
+mkdir -p ~/.config/google-chrome
+touch ~/.config/google-chrome/'First Run'
 
-chromium \
+# 4. Launch Clean Official Google Chrome (No Automation Banners, Pure Consumer Mode)
+echo "[+] Launching Official Google Chrome..."
+google-chrome \
   --no-sandbox \
+  --no-first-run \
+  --no-default-browser-check \
+  --disable-search-engine-choice-screen \
   --disable-dev-shm-usage \
   --disable-blink-features=AutomationControlled \
-  --disable-infobars \
-  --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
-  --window-size=${CANVAS_WIDTH},${CANVAS_HEIGHT} \
-  --window-position=0,0 \
-  --kiosk \
+  --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
   --autoplay-policy=no-user-gesture-required \
-  --alsa-output-device=pulse \
-  --enable-audio-service-sandbox=false \
-  --disable-features=AudioServiceOutOfProcess \
-  --use-gl=angle \
-  --use-angle=swiftshader \
-  --enable-webgl \
-  --user-data-dir=/home/streamer/chrome-profile \
-  --app="$TARGET_URL" &
+  --disable-gpu \
+  --window-size=1280,720 \
+  --window-position=0,0 \
+  --start-fullscreen \
+  --kiosk "$FULL_URL" &
 
-# ==============================================================
-# 4. Background Unmute & Click Watchdog (Runs for 45 seconds)
-# ==============================================================
+# 5. Wait for page load and trigger broadcast clicks & keys to unmute
 (
   echo "[+] Starting Unmute Watchdog..."
-  for step in {1..10}; do
-    sleep 4
-    WID=$(xdotool search --onlyvisible --class chromium 2>/dev/null | tail -n 1 || true)
-    if [ -n "$WID" ]; then
-      xdotool windowactivate --sync "$WID" 2>/dev/null || true
-      xdotool windowfocus --sync "$WID" 2>/dev/null || true
-    fi
-    # Click center of video
-    xdotool mousemove $((CANVAS_WIDTH / 2)) $((CANVAS_HEIGHT / 2)) click 1 2>/dev/null || true
-    # Click TV logo at top right
-    xdotool mousemove $((CANVAS_WIDTH - 120)) 45 click 1 2>/dev/null || true
-    # Send Keydown Space & Enter to trigger unlockSoundOnInteraction()
-    xdotool key space Return 2>/dev/null || true
+  for i in 1 2 3 4 5; do
+    sleep 6
+    xdotool search --onlyvisible --class "google-chrome" windowfocus || true
+    xdotool mousemove 640 360 click 1 || true
+    xdotool key space Return || true
+    echo "[*] Triggered broadcast unmute click & keys (attempt $i)."
   done
-  echo "[✓] Unmute Watchdog complete."
 ) &
 
-# ==============================================================
-# 5. FFmpeg: Downscale 1280x720 to 240p (200k Video + 128k Audio)
-# ==============================================================
-echo "[+] Starting FFmpeg Stream to YouTube RTMP..."
-GOP_SIZE=$((FPS * 2))
-
+# 6. Stream Engine: Downscale 1280x720 to 240p (200k Video + 128k Audio = 16 Days)
+echo "[+] Launching FFmpeg Stream to YouTube Live..."
 while true; do
-  ffmpeg -y \
-    -thread_queue_size 1024 \
-    -f x11grab -draw_mouse 0 -video_size "${CANVAS_WIDTH}x${CANVAS_HEIGHT}" -framerate $FPS -i :99.0 \
-    -thread_queue_size 1024 \
-    -f pulse -i VirtualSink.monitor \
-    -vf "scale=${OUT_WIDTH}:${OUT_HEIGHT}:flags=bilinear" \
+  ffmpeg -hide_banner -loglevel warning \
+    -thread_queue_size 512 -f x11grab -draw_mouse 0 -video_size 1280x720 -framerate 15 -i :99.0 \
+    -thread_queue_size 512 -f pulse -i VirtualSink.monitor \
+    -vf "scale=426:240:flags=bilinear" \
     -c:v libx264 -preset ultrafast -tune zerolatency \
-    -b:v $VIDEO_BITRATE -maxrate $VIDEO_BITRATE -bufsize 450k \
-    -pix_fmt yuv420p -g $GOP_SIZE -keyint_min $FPS \
-    -c:a aac -b:a $AUDIO_BITRATE -ar 44100 -ac 2 \
-    -f flv "rtmp://a.rtmp.youtube.com/live2/${YOUTUBE_STREAM_KEY}" || true
+    -fps_mode cfr -r 15 -g 30 -keyint_min 30 -sc_threshold 0 \
+    -b:v 200k -maxrate 200k -bufsize 400k -pix_fmt yuv420p \
+    -c:a aac -b:a 128k -ar 44100 \
+    -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY" || true
 
-  echo "[!] FFmpeg disconnected. Reconnecting in 5 seconds..."
+  echo "[!] Stream disconnected. Reconnecting in 5 seconds..."
   sleep 5
 done
