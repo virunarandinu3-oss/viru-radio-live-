@@ -8,7 +8,6 @@ if [ "$(id -u)" = "0" ]; then
   echo "    STARTING CLOUDFLARE 1.1.1.1 WARP (ROOT)       "
   echo "=================================================="
 
-  # Clean up any leftover lock files from previous runs
   rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 
   mkdir -p /var/run/dbus /var/lib/cloudflare-warp /home/streamer/.config/pulse
@@ -32,7 +31,7 @@ if [ "$(id -u)" = "0" ]; then
     sleep 1
   done
 
-  echo "[+] Switching to streamer user (with clean HOME=/home/streamer)..."
+  echo "[+] Switching to streamer user..."
   exec su - streamer -c "YOUTUBE_STREAM_KEY='$YOUTUBE_STREAM_KEY' TARGET_URL='$TARGET_URL' PROXY_FLAG='$PROXY_FLAG' bash /home/streamer/start.sh"
 fi
 
@@ -42,6 +41,7 @@ fi
 export HOME=/home/streamer
 export USER=streamer
 export DISPLAY=:99
+export LIBGL_ALWAYS_SOFTWARE=1
 
 echo "=================================================="
 echo "    STREAM VIRU RADIO TO YOUTUBE (16-DAY PLAN)    "
@@ -54,7 +54,6 @@ if [ -z "$YOUTUBE_STREAM_KEY" ]; then
   exit 1
 fi
 
-# Clean old X11 locks for this user
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 
 TARGET_URL="${TARGET_URL:-https://original-site-orpin.vercel.app/}"
@@ -79,7 +78,7 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-# 1. Start Virtual Display
+# 1. Start Virtual Display with 24-bit TrueColor
 echo "[+] Starting Xvfb Display on :99..."
 Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset &
 sleep 2
@@ -101,8 +100,11 @@ pactl set-source-volume VirtualSink.monitor 65536 || true
 mkdir -p /home/streamer/.config/google-chrome
 touch /home/streamer/.config/google-chrome/'First Run'
 
-# 4. Launch Clean Official Google Chrome (with Cloudflare WARP Proxy)
-echo "[+] Launching Official Google Chrome..."
+# 4. Launch Clean Official Google Chrome
+# Fix for Black Screen:
+# - Replaced '--disable-gpu' with SwiftShader software rasterizer
+# - Enables video frame compositing without physical GPU
+echo "[+] Launching Official Google Chrome with SwiftShader Video Compositing..."
 google-chrome \
   --no-sandbox \
   --no-first-run \
@@ -112,7 +114,12 @@ google-chrome \
   --disable-blink-features=AutomationControlled \
   --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36" \
   --autoplay-policy=no-user-gesture-required \
-  --disable-gpu \
+  --use-gl=swiftshader \
+  --enable-software-rasterizer \
+  --disable-gpu-compositing \
+  --enable-webgl \
+  --alsa-output-device=pulse \
+  --enable-audio-service-sandbox=false \
   --window-size=1280,720 \
   --window-position=0,0 \
   --start-fullscreen \
@@ -120,15 +127,19 @@ google-chrome \
   $PROXY_FLAG \
   --kiosk "$FULL_URL" &
 
-# 5. Wait for page load and trigger broadcast clicks & keys to unmute
+# 5. Continuous Unmute Watchdog (Triggers multiple screen clicks & keys so video rolls)
 (
   echo "[+] Starting Unmute Watchdog..."
-  for i in 1 2 3 4 5; do
-    sleep 6
+  for i in {1..8}; do
+    sleep 4
     xdotool search --onlyvisible --class "google-chrome" windowfocus || true
+    # Click center of video
     xdotool mousemove 640 360 click 1 || true
+    # Click TV logo at top right
+    xdotool mousemove 1160 50 click 1 || true
+    # Send Keydown Space & Enter to trigger unlockSoundOnInteraction()
     xdotool key space Return || true
-    echo "[*] Triggered broadcast unmute click & keys (attempt $i)."
+    echo "[*] Watchdog gesture sent (attempt $i)."
   done
 ) &
 
