@@ -14,7 +14,6 @@ fi
 
 TARGET_URL="${TARGET_URL:-https://original-site-orpin.vercel.app/}"
 
-# Append autoplay=1 parameter safely
 if [[ "$TARGET_URL" == *"?"* ]]; then
   FULL_URL="${TARGET_URL}&autoplay=1"
 else
@@ -36,7 +35,7 @@ trap cleanup SIGTERM SIGINT
 
 # 1. Start Virtual Display in 720p (Normal TV Proportions)
 echo "[+] Starting Xvfb Display on :99..."
-Xvfb :99 -screen 0 1280x720x24 &
+Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset &
 export DISPLAY=:99
 sleep 2
 
@@ -71,6 +70,7 @@ google-chrome \
   --window-size=1280,720 \
   --window-position=0,0 \
   --start-fullscreen \
+  --log-level=3 \
   --kiosk "$FULL_URL" &
 
 # 5. Wait for page load and trigger broadcast clicks & keys to unmute
@@ -86,6 +86,7 @@ google-chrome \
 ) &
 
 # 6. Stream Engine: Downscale 1280x720 to 240p (200k Video + 128k Audio = 16 Days)
+# FFmpeg 4.x compatible (-vsync 1 instead of unrecognized -fps_mode)
 echo "[+] Launching FFmpeg Stream to YouTube Live..."
 while true; do
   ffmpeg -hide_banner -loglevel warning \
@@ -93,7 +94,7 @@ while true; do
     -thread_queue_size 512 -f pulse -i VirtualSink.monitor \
     -vf "scale=426:240:flags=bilinear" \
     -c:v libx264 -preset ultrafast -tune zerolatency \
-    -fps_mode cfr -r 15 -g 30 -keyint_min 30 -sc_threshold 0 \
+    -vsync 1 -r 15 -g 30 -keyint_min 30 \
     -b:v 200k -maxrate 200k -bufsize 400k -pix_fmt yuv420p \
     -c:a aac -b:a 128k -ar 44100 \
     -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY" || true
