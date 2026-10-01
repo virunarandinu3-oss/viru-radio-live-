@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -e
 
 # ==============================================================
 # PHASE 1: ROOT INITIALIZATION (Start Cloudflare WARP)
@@ -9,10 +8,14 @@ if [ "$(id -u)" = "0" ]; then
   echo "    STARTING CLOUDFLARE 1.1.1.1 WARP (ROOT)       "
   echo "=================================================="
 
-  mkdir -p /var/run/dbus /var/lib/cloudflare-warp
+  # Clean up any leftover lock files from previous runs
+  rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
+
+  mkdir -p /var/run/dbus /var/lib/cloudflare-warp /home/streamer/.config/pulse
+  chown -R streamer:streamer /home/streamer
   dbus-daemon --system --fork 2>/dev/null || true
   warp-svc >/dev/null 2>&1 &
-  sleep 4
+  sleep 3
 
   warp-cli --accept-tos registration new 2>/dev/null || warp-cli --accept-tos register 2>/dev/null || true
   warp-cli --accept-tos mode proxy 2>/dev/null || warp-cli --accept-tos set-mode proxy 2>/dev/null || true
@@ -21,26 +24,25 @@ if [ "$(id -u)" = "0" ]; then
 
   PROXY_FLAG=""
   for i in {1..8}; do
-    echo "[*] Checking Cloudflare WARP status (attempt $i/8)..."
     if curl --socks5 127.0.0.1:40000 -s --max-time 2 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | grep -q "warp=on"; then
       echo "[✓] SUCCESS: Cloudflare 1.1.1.1 WARP is ACTIVE! Datacenter IP is now masked."
       PROXY_FLAG="--proxy-server=socks5://127.0.0.1:40000"
-      break
-    elif curl --socks5 127.0.0.1:1080 -s --max-time 2 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | grep -q "warp=on"; then
-      echo "[✓] SUCCESS: Cloudflare 1.1.1.1 WARP is ACTIVE on 1080! Datacenter IP is now masked."
-      PROXY_FLAG="--proxy-server=socks5://127.0.0.1:1080"
       break
     fi
     sleep 1
   done
 
-  echo "[+] Switching to streamer user to launch audio and Chrome..."
-  exec su -p streamer -c "PROXY_FLAG='$PROXY_FLAG' TARGET_URL='$TARGET_URL' YOUTUBE_STREAM_KEY='$YOUTUBE_STREAM_KEY' /home/streamer/start.sh"
+  echo "[+] Switching to streamer user (with clean HOME=/home/streamer)..."
+  exec su - streamer -c "YOUTUBE_STREAM_KEY='$YOUTUBE_STREAM_KEY' TARGET_URL='$TARGET_URL' PROXY_FLAG='$PROXY_FLAG' bash /home/streamer/start.sh"
 fi
 
 # ==============================================================
 # PHASE 2: STREAMER INITIALIZATION (Audio, Chrome, and FFmpeg)
 # ==============================================================
+export HOME=/home/streamer
+export USER=streamer
+export DISPLAY=:99
+
 echo "=================================================="
 echo "    STREAM VIRU RADIO TO YOUTUBE (16-DAY PLAN)    "
 echo "=================================================="
@@ -51,6 +53,9 @@ if [ -z "$YOUTUBE_STREAM_KEY" ]; then
   sleep 3600
   exit 1
 fi
+
+# Clean old X11 locks for this user
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 
 TARGET_URL="${TARGET_URL:-https://original-site-orpin.vercel.app/}"
 
@@ -74,18 +79,18 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-# 1. Start Virtual Display in 720p (Normal TV Proportions)
+# 1. Start Virtual Display
 echo "[+] Starting Xvfb Display on :99..."
 Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset &
-export DISPLAY=:99
 sleep 2
 
 # 2. Setup PulseAudio Virtual Sink
 echo "[+] Initializing PulseAudio Virtual Sink..."
+pulseaudio --kill 2>/dev/null || true
 pulseaudio --start --exit-idle-time=-1
 sleep 2
-pactl load-module module-null-sink sink_name=VirtualSink sink_properties=device.description=VirtualSink
-pactl set-default-sink VirtualSink
+pactl load-module module-null-sink sink_name=VirtualSink sink_properties=device.description=VirtualSink || true
+pactl set-default-sink VirtualSink || true
 export PULSE_SINK=VirtualSink
 pactl set-sink-mute VirtualSink 0 || true
 pactl set-sink-volume VirtualSink 65536 || true
@@ -93,8 +98,8 @@ pactl set-source-mute VirtualSink.monitor 0 || true
 pactl set-source-volume VirtualSink.monitor 65536 || true
 
 # 3. Suppress Chrome Prompts
-mkdir -p ~/.config/google-chrome
-touch ~/.config/google-chrome/'First Run'
+mkdir -p /home/streamer/.config/google-chrome
+touch /home/streamer/.config/google-chrome/'First Run'
 
 # 4. Launch Clean Official Google Chrome (with Cloudflare WARP Proxy)
 echo "[+] Launching Official Google Chrome..."
