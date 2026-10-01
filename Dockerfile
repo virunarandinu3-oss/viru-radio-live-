@@ -2,12 +2,14 @@ FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 1. Install base utilities, Chromium, Xvfb, PulseAudio, FFmpeg, and dependencies
+# 1. Install base utilities, Chromium, Xvfb, Openbox (window manager for focus), PulseAudio, FFmpeg
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     xvfb \
+    openbox \
     pulseaudio \
     pulseaudio-utils \
+    libasound2-plugins \
     ffmpeg \
     xdotool \
     fonts-dejavu-core \
@@ -21,13 +23,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Install Official Cloudflare WARP Client (Bypasses YouTube datacenter bot detection)
+# 2. Install Official Cloudflare WARP Client
 RUN curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg && \
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ bookworm main" | tee /etc/apt/sources.list.d/cloudflare-client.list && \
     apt-get update && apt-get install -y --no-install-recommends cloudflare-warp && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Create streamer user for clean PulseAudio & Chromium audio permissions
+# Create streamer user
 RUN useradd -m -s /bin/bash streamer && \
     usermod -aG audio,video streamer
 
