@@ -1,26 +1,32 @@
-FROM debian:bookworm-slim
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies: Chromium, Xvfb, Openbox (for window focus & audio clicks), PulseAudio, FFmpeg
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    xvfb \
-    openbox \
+# 1. Install base dependencies and tools
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg \
+    ca-certificates \
+    ffmpeg \
     pulseaudio \
     pulseaudio-utils \
-    libasound2-plugins \
-    ffmpeg \
+    xvfb \
     xdotool \
+    libasound2-plugins \
     fonts-dejavu-core \
     fonts-liberation \
-    ca-certificates \
-    curl \
     procps \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Dedicated streamer user (runs PulseAudio, Chromium, and FFmpeg seamlessly under one user)
+# 2. Install Official Google Chrome Stable
+RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/trusted.gpg.d/google-chrome.gpg && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends google-chrome-stable && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 3. Create non-root streamer user for smooth PulseAudio & Chrome operations
 RUN useradd -m -s /bin/bash streamer && \
     usermod -aG audio,video streamer
 
@@ -32,10 +38,6 @@ RUN chmod +x /home/streamer/start.sh && chown -R streamer:streamer /home/streame
 USER streamer
 
 ENV TARGET_URL="https://original-site-orpin.vercel.app/"
-ENV OUTPUT_RESOLUTION="426x240"
-ENV CANVAS_RESOLUTION="1280x720"
-ENV FPS="15"
-ENV VIDEO_BITRATE="200k"
-ENV AUDIO_BITRATE="128k"
+ENV YOUTUBE_STREAM_KEY=""
 
 CMD ["/home/streamer/start.sh"]
