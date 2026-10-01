@@ -26,7 +26,10 @@ RUN curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor
     apt-get install -y --no-install-recommends google-chrome-stable && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 3. Create non-root streamer user for smooth PulseAudio & Chrome operations
+# Fix /tmp/.X11-unix permissions for Xvfb non-root execution
+RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+
+# 3. Create non-root streamer user
 RUN useradd -m -s /bin/bash streamer && \
     usermod -aG audio,video streamer
 
